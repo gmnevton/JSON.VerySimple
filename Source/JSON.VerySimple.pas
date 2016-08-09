@@ -810,11 +810,11 @@ begin
   Result := ReplaceStr(Value,  '\"', '"');
   Result := ReplaceStr(Result, '\\', '\');
   Result := ReplaceStr(Result, '\/', '/');
-  Result := ReplaceStr(Result, '\\b', #8);
-  Result := ReplaceStr(Result, '\\f', #12);
-  Result := ReplaceStr(Result, '\\n', #10);
-  Result := ReplaceStr(Result, '\\r', #13);
-  Result := ReplaceStr(Result, '\\t', #9);
+  Result := ReplaceStr(Result, '\b', #8);
+  Result := ReplaceStr(Result, '\f', #12);
+  Result := ReplaceStr(Result, '\n', #10);
+  Result := ReplaceStr(Result, '\r', #13);
+  Result := ReplaceStr(Result, '\t', #9);
 //  Result := ReplaceStr(Result, '\u', 'u');
 end;
 
