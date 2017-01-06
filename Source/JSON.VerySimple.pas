@@ -1,14 +1,14 @@
-{ JSON.VerySimple v1.0.0 - a lightweight, one-unit, cross-platform JSON reader/writer
+{ JSON.VerySimple v1.2.0 - a lightweight, one-unit, cross-platform JSON reader/writer
   for Delphi 2010+ by Grzegorz Molenda
   https://github.com/gmnevton/JSON.VerySimple
 
-  (c) Copyrights 2016 Grzegorz Molenda aka NevTon <gmnevton@gmail.com>
+  (c) Copyrights 2016-2017 Grzegorz Molenda aka NevTon <gmnevton@gmail.com>
   This unit is free and can be used for any needs. The introduction of
   any changes and the use of those changed library is permitted without
   limitations. Only requirement:
   This text must be present without changes in all modifications of library.
 
-  * The contents of this file are used with permission, subject to
+  * The contents of this file are used with permission, subject to    *
   * the Mozilla Public License Version 1.1 (the "License"); you may   *
   * not use this file except in compliance with the License. You may  *
   * obtain a copy of the License at                                   *
@@ -24,16 +24,19 @@ unit JSON.VerySimple;
 interface
 
 uses
-  Classes, SysUtils, Generics.Defaults, Generics.Collections, uStreamWriter;
+  Classes, SysUtils, Generics.Defaults, Generics.Collections;
 
 const
   TJSONSpaces = #$20 + #$0D + #$0A + #9;
 
 type
+  TJSONString = type String;
   TJSONVerySimple = class;
   TJSONNode = class;
   TJSONNodeType = (jtObject, jtArray, jtString, jtNumber, jtTrue, jtFalse, jtNull);
   TJSONNodeTypes = set of TJSONNodeType;
+  TJSONNodeSearchType = (jsRecursive);
+  TJSONNodeSearchTypes = set of TJSONNodeSearchType;
   TJSONNodeList = class;
   TJSONOptions = set of (joNodeAutoIndent, joCompact, joCompactWithBreakes, joPreserveWhiteSpace, joCaseInsensitive, joWriteBOM);
   TJSONExtractTextOptions = set of (jetDeleteStopChar, jetStopString);
@@ -44,23 +47,29 @@ type
 
   TJSONNode = class(TObject)
   private
-    FName: String;
-    FValue: String;
+    FName: TJSONString;
+    FValue: TJSONString;
     FLevel: Cardinal; // node level in tree structure
     FIndex: Cardinal; // node index in nodes list structure
     FPrevSibling,           // link to the node's previous sibling or nil if it is the first node
     FNextSibling: TJSONNode; // link to the node's next sibling or nil if it is the last node
     FNodeType: TJSONNodeType;
 
-    function IsSame(const Value1, Value2: String): Boolean;
+    function IsSame(const Value1, Value2: TJSONString): Boolean;
     procedure _SetNodeType(const Value: TJSONNodeType);
+    ///	<summary> Find a child node by its name in tree </summary>
+    function FindNodeRecursive(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []; const SearchOptions: TJSONNodeSearchTypes = []): TJSONNode; overload; virtual;
+    ///	<summary> Find a child node by name and value in tree </summary>
+    function FindNodeRecursive(const Name, Value: TJSONString; NodeTypes: TJSONNodeTypes = []; const SearchOptions: TJSONNodeSearchTypes = []): TJSONNode; overload; virtual;
+    ///	<summary> Return a list of child nodes with the given name and (optional) node types in tree </summary>
+//    function FindNodesRecursive(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNodeList; virtual;
   protected
     [Weak] FDocument: TJSONVerySimple;
     procedure SetDocument(Value: TJSONVerySimple);
-    procedure SetName(Value: String);
-    procedure SetValue(Value: String);
-    function GetName: String;
-    function GetValue: String;
+    procedure SetName(Value: TJSONString);
+    procedure SetValue(Value: TJSONString);
+    function GetName: TJSONString;
+    function GetValue: TJSONString;
   public
     ///	<summary> List of child nodes, never NIL </summary>
     ChildNodes: TJSONNodeList;
@@ -72,24 +81,18 @@ type
     destructor Destroy; override;
     ///	<summary> Clears the attributes, the text and all of its child nodes (but not the name) </summary>
     procedure Clear;
-    ///	<summary> Find a child node by its name in tree </summary>
-    function FindNodeRecursive(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNode; overload; virtual;
-    ///	<summary> Find a child node by name and value in tree </summary>
-    function FindNodeRecursive(const Name, Value: String; NodeTypes: TJSONNodeTypes = []): TJSONNode; overload; virtual;
-    ///	<summary> Return a list of child nodes with the given name and (optional) node types in tree </summary>
-//    function FindNodesRecursive(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNodeList; virtual;
     ///	<summary> Find a child node by its name </summary>
-    function FindNode(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNode; overload; virtual;
+    function FindNode(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []; const SearchOptions: TJSONNodeSearchTypes = []): TJSONNode; overload; virtual;
     ///	<summary> Find a child node by name and attribute name </summary>
-    function FindNode(const Name, Value: String; NodeTypes: TJSONNodeTypes = []): TJSONNode; overload; virtual;
+    function FindNode(const Name, Value: TJSONString; NodeTypes: TJSONNodeTypes = []; const SearchOptions: TJSONNodeSearchTypes = []): TJSONNode; overload; virtual;
     ///	<summary> Return a list of child nodes with the given name and (optional) node types </summary>
-    function FindNodes(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNodeList; virtual;
+    function FindNodes(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNodeList; virtual;
     // Loops trough childnodes with given Name
-    procedure ScanNodes(Name: String; CallBack: TJSONNodeCallBack);
+    procedure ScanNodes(Name: TJSONString; CallBack: TJSONNodeCallBack);
     ///	<summary> Returns True if a child node with that name exits </summary>
-    function HasChild(const Name: String; NodeTypes: TJSONNodeTypes = []): Boolean; virtual;
+    function HasChild(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): Boolean; virtual;
     ///	<summary> Add a child node with an optional NodeType (default: [])</summary>
-    function AddChild(const AName: String; ANodeType: TJSONNodeType): TJSONNode; virtual;
+    function AddChild(const AName: TJSONString; ANodeType: TJSONNodeType): TJSONNode; virtual;
     ///	<summary> Removes a child node</summary>
     function RemoveChild(const Node: TJSONNode): Integer; virtual;
     ///	<summary> Moves a child node</summary>
@@ -97,9 +100,9 @@ type
     ///	<summary> Add a nodes tree from existing node </summary>
     procedure AddNodes(const RootNode: TJSONNode; const AddRootNode: Boolean = False); virtual;
     ///	<summary> Insert a child node at a specific position with a NodeType (default: [])</summary>
-    function InsertChild(const Name: String; Position: Integer; NodeType: TJSONNodeType): TJSONNode; virtual;
+    function InsertChild(const Name: TJSONString; Position: Integer; NodeType: TJSONNodeType): TJSONNode; virtual;
     ///	<summary> Fluent interface for setting the text of the node </summary>
-    function SetText(const AValue: String): TJSONNode; virtual;
+    function SetText(const AValue: TJSONString): TJSONNode; virtual;
     ///	<summary> Returns first child or NIL if there aren't any child nodes </summary>
     function FirstChild: TJSONNode; virtual;
     ///	<summary> Returns last child node or NIL if there aren't any child nodes </summary>
@@ -113,17 +116,17 @@ type
     ///	<summary> Fluent interface for setting the node type </summary>
     function SetNodeType(const Value: TJSONNodeType): TJSONNode; virtual;
     ///	<summary> Name of the node </summary>
-    property Name: String read GetName write SetName;
+    property Name: TJSONString read GetName write SetName;
     ///	<summary> Text value of the node </summary>
-    property Value: String read GetValue write SetValue;
+    property Value: TJSONString read GetValue write SetValue;
     ///	<summary> The JSON document of the node </summary>
     property Document: TJSONVerySimple read FDocument write SetDocument;
     ///	<summary> The node name, same as property Name </summary>
-    property NodeName: String read GetName write SetName;
+    property NodeName: TJSONString read GetName write SetName;
     ///	<summary> The node type, see TJSONNodeType </summary>
     property NodeType: TJSONNodeType read FNodeType write _SetNodeType;
     ///	<summary> The node text, same as property Text </summary>
-    property NodeValue: String read GetValue write SetValue;
+    property NodeValue: TJSONString read GetValue write SetValue;
     ///	<summary> The node Level in tree </summary>
     property Level: Cardinal read FLevel;
     ///	<summary> The node Index in list </summary>
@@ -132,7 +135,7 @@ type
 
   TJSONNodeList = class(TObjectList<TJSONNode>)
   private
-    function IsSame(const Value1, Value2: String): Boolean;
+    function IsSame(const Value1, Value2: TJSONString): Boolean;
   public
     ///	<summary> The JSON document of the node list </summary>
     [Weak] Document: TJSONVerySimple;
@@ -143,23 +146,23 @@ type
     ///	<summary> Creates a new node of type NodeType (default []) and adds it to the list </summary>
     function Add(NodeType: TJSONNodeType): TJSONNode; overload; virtual;
     ///	<summary> Add a child node with an optional NodeType (default: [])</summary>
-    function Add(const Name: String; NodeType: TJSONNodeType): TJSONNode; overload; virtual;
+    function Add(const Name: TJSONString; NodeType: TJSONNodeType): TJSONNode; overload; virtual;
     ///	<summary> Inserts a node at the given position </summary>
-    function Insert(const Name: String; Position: Integer; NodeType: TJSONNodeType): TJSONNode; overload; virtual;
+    function Insert(const Name: TJSONString; Position: Integer; NodeType: TJSONNodeType): TJSONNode; overload; virtual;
     ///	<summary> Removes a node at the given position </summary>
     procedure Remove(Index: Integer); overload; virtual;
     ///	<summary> Find a node by its name (case sensitive), returns NIL if no node is found </summary>
-    function Find(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNode; overload; virtual;
+    function Find(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNode; overload; virtual;
     ///	<summary> Same as Find(), returnsa a node by its name (case sensitive) </summary>
-    function FindNode(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNode; virtual;
+    function FindNode(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNode; virtual;
     ///	<summary> Find a node that has the the given attribute, returns NIL if no node is found </summary>
-    function Find(const Name, Value: String; NodeTypes: TJSONNodeTypes = []): TJSONNode; overload; virtual;
+    function Find(const Name, Value: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNode; overload; virtual;
     ///	<summary> Return a list of child nodes with the given name and (optional) node types </summary>
-    function FindNodes(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNodeList; virtual;
+    function FindNodes(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNodeList; virtual;
     // Loops trough childnodes with given Name
-//    procedure ScanNodes(const Name: String; CallBack: TJSONNodeCallBack);
+//    procedure ScanNodes(const Name: TJSONString; CallBack: TJSONNodeCallBack);
     ///	<summary> Returns True if the list contains a node with the given name </summary>
-    function HasNode(const Name: String; NodeTypes: TJSONNodeTypes = []): Boolean; virtual;
+    function HasNode(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): Boolean; virtual;
     ///	<summary> Returns the first child node, same as .First </summary>
     function FirstChild: TJSONNode; virtual;
     ///	<summary> Returns previous sibling node </summary>
@@ -169,45 +172,45 @@ type
     ///	<summary> Returns the node at the given position </summary>
     function Get(Index: Integer): TJSONNode; virtual;
     ///	<summary> Returns the node count of the given name</summary>
-    function CountNames(const Name: String; var NodeList: TJSONNodeList): Integer; virtual;
+    function CountNames(const Name: TJSONString; var NodeList: TJSONNodeList): Integer; virtual;
   end;
 
-  TJSONEscapeProcedure = reference to procedure (var TextLine: String);
+  TJSONEscapeProcedure = reference to procedure (var TextLine: TJSONString);
 
   TJSONVerySimple = class(TObject)
   private
-    FEncoding: String;
-    FDivider: String;
+    FEncoding: TJSONString;
+    FDivider: TJSONString;
   protected
     Root: TJSONNode;
     [Weak] FDocumentElement: TJSONNode;
     SkipIndent: Boolean;
     JSONEscapeProcedure: TJSONEscapeProcedure;
     procedure Parse(Reader: TStreamReader); virtual;
-    procedure SkipWhitespace(Reader: TStreamReader; Line: String);
+    procedure SkipWhitespace(Reader: TStreamReader; Line: TJSONString);
     procedure ParseObject(Reader: TStreamReader; var Parent: TJSONNode);
     procedure ParsePair(Reader: TStreamReader; var Parent: TJSONNode);
     procedure ParseValue(Reader: TStreamReader; var Parent: TJSONNode);
     procedure ParseArray(Reader: TStreamReader; var Parent: TJSONNode);
-    procedure Walk(Writer: TStreamWriter; const PrefixNode: String; Node: TJSONNode); virtual;
-    procedure SetText(const Value: String); virtual;
-    function  GetText: String; virtual;
-    procedure SetEncoding(const Value: String); virtual;
-    function  GetEncoding: String; virtual;
+    procedure Walk(Writer: TStreamWriter; const PrefixNode: TJSONString; Node: TJSONNode); virtual;
+    procedure SetText(const Value: TJSONString); virtual;
+    function  GetText: TJSONString; virtual;
+    procedure SetEncoding(const Value: TJSONString); virtual;
+    function  GetEncoding: TJSONString; virtual;
     procedure Compose(Writer: TStreamWriter); virtual;
     function  GetChildNodes: TJSONNodeList; virtual;
-    function  ExtractText(var Line: String; const StopChars: String; Options: TJSONExtractTextOptions): String; virtual;
+    function  ExtractText(var Line: TJSONString; const StopChars: TJSONString; Options: TJSONExtractTextOptions): TJSONString; virtual;
     procedure SetDocumentElement(Value: TJSONNode); virtual;
     procedure SetNodeAutoIndent(Value: Boolean);
     function  GetNodeAutoIndent: Boolean;
     procedure SetPreserveWhitespace(Value: Boolean);
     function  GetPreserveWhitespace: Boolean;
-    function  IsSame(const Value1, Value2: String): Boolean;
+    function  IsSame(const Value1, Value2: TJSONString): Boolean;
   public
     ///	<summary> Indent used for the JSON output </summary>
-    NodeIndentStr: String;
+    NodeIndentStr: TJSONString;
     ///	<summary> LineBreak used for the JSON output, default set to sLineBreak which is OS dependent </summary>
-    LineBreak: String;
+    LineBreak: TJSONString;
     ///	<summary> Options for JSON output like indentation type </summary>
     Options: TJSONOptions;
     ///	<summary> Creates a new JSON document parser </summary>
@@ -217,17 +220,17 @@ type
     ///	<summary> Deletes all nodes </summary>
     procedure Clear; virtual;
     ///	<summary> Adds a new node to the document</summary>
-    function AddChild(const Name: String; NodeType: TJSONNodeType): TJSONNode; virtual;
+    function AddChild(const Name: TJSONString; NodeType: TJSONNodeType): TJSONNode; virtual;
     ///	<summary> Removes a child node</summary>
     function RemoveChild(const Node: TJSONNode): Integer; virtual;
     ///	<summary> Moves a child node</summary>
     function MoveChild(const FromNode, ToNode: TJSONNode): TJSONNode; virtual;
     ///	<summary> Creates a new node but doesn't adds it to the document nodes </summary>
-    function CreateNode(const Name: String; NodeType: TJSONNodeType): TJSONNode; virtual;
+    function CreateNode(const Name: TJSONString; NodeType: TJSONNodeType): TJSONNode; virtual;
     /// <summary> Escapes JSON control characters </summar>
-    class function Escape(const Value: String): String; virtual;
+    class function Escape(const Value: TJSONString): TJSONString; virtual;
     /// <summary> Translates escaped characters back into JSON control characters </summar>
-    class function Unescape(const Value: String): String; virtual;
+    class function Unescape(const Value: TJSONString): TJSONString; virtual;
     ///	<summary> Loads the JSON from a file </summary>
     function LoadFromFile(const FileName: String; BufferSize: Integer = 4096): TJSONVerySimple; virtual;
     ///	<summary> Loads the JSON from a stream </summary>
@@ -242,15 +245,15 @@ type
     ///	<summary> Returns the first element node </summary>
     property DocumentElement: TJSONNode read FDocumentElement write SetDocumentElement;
     ///	<summary> Specifies the encoding of the JSON file, anything else then 'utf-8' is considered as ANSI </summary>
-    property Encoding: String read GetEncoding write SetEncoding;
+    property Encoding: TJSONString read GetEncoding write SetEncoding;
     ///	<summary> Set to True if all spaces and linebreaks should be included as a text node, same as doPreserve option </summary>
     property NodeAutoIndent: Boolean read GetNodeAutoIndent write SetNodeAutoIndent;
     ///	<summary> Set to True if all spaces and linebreaks should be included as a text node, same as doPreserve option </summary>
     property PreserveWhitespace: Boolean read GetPreserveWhitespace write SetPreserveWhitespace;
     ///	<summary> The JSON as a string representation </summary>
-    property Text: String read GetText write SetText;
+    property Text: TJSONString read GetText write SetText;
     ///	<summary> The JSON as a string representation, same as .Text </summary>
-    property JSON: String read GetText write SetText;
+    property JSON: TJSONString read GetText write SetText;
   end;
 
 function BooleanToNodeType(const ABoolean: Boolean): TJSONNodeType;
@@ -258,21 +261,28 @@ function BooleanToNodeType(const ABoolean: Boolean): TJSONNodeType;
 implementation
 
 uses
+//  WideStrUtils,
   StrUtils;
 
 type
+  TStreamWriterHelper = class helper for TStreamWriter
+  public
+    constructor Create(Stream: TStream; Encoding: TEncoding; WritePreamble: Boolean = True; BufferSize: Integer = 1024); overload;
+    constructor Create(Filename: string; Append: Boolean; Encoding: TEncoding; WritePreamble: Boolean = True; BufferSize: Integer = 1024); overload;
+  end;
+
   TStreamReaderHelper = class helper for TStreamReader
   public
     ///	<summary> Assures the read buffer holds at least Value characters </summary>
     function PrepareBuffer(Value: Integer): Boolean;
     ///	<summary> Extract text until chars found in StopChars </summary>
-    function ReadText(const StopChars: String; Options: TJSONExtractTextOptions): String; virtual;
+    function ReadText(const StopChars: TJSONString; Options: TJSONExtractTextOptions): TJSONString; virtual;
     ///	<summary> Returns fist char but does not removes it from the buffer </summary>
     function FirstChar: Char;
     ///	<summary> Proceed with the next character(s) (value optional, default 1) </summary>
     procedure IncCharPos(Value: Integer = 1); virtual;
     ///	<summary> Returns True if the first uppercased characters at the current position match Value </summary>
-    function IsUppercaseText(const Value: String): Boolean; virtual;
+    function IsUppercaseText(const Value: TJSONString): Boolean; virtual;
   end;
 
 const
@@ -288,7 +298,7 @@ begin
 end;
 
 //Delphi XE3 added PosEx as an overloaded Pos function, so we need to wrap it in every other Delphi version
-function Pos(const SubStr, S: string; Offset: Integer): Integer; overload; Inline;
+function Pos(const SubStr, S: String; Offset: Integer): Integer; overload; Inline;
 begin
   Result := PosEx(SubStr, S, Offset);
 end;
@@ -307,6 +317,14 @@ begin
 end;
 {$IFEND}
 
+function IfThen(AValue: Boolean; const ATrue: TJSONString; AFalse: TJSONString = ''): TJSONString; overload; inline;
+begin
+  if AValue then
+    Result := ATrue
+  else
+    Result := AFalse;
+end;
+
 function BooleanToNodeType(const ABoolean: Boolean): TJSONNodeType;
 begin
   if ABoolean then
@@ -317,7 +335,7 @@ end;
 
 { TVerySimpleJSON }
 
-function TJSONVerySimple.AddChild(const Name: String; NodeType: TJSONNodeType): TJSONNode;
+function TJSONVerySimple.AddChild(const Name: TJSONString; NodeType: TJSONNodeType): TJSONNode;
 begin
   Result:=Nil; // satisfy compiler
   try
@@ -372,6 +390,7 @@ procedure TJSONVerySimple.Clear;
 begin
   FDocumentElement := NIL;
   Root.Clear;
+  FDocumentElement := Root;
 end;
 
 constructor TJSONVerySimple.Create;
@@ -384,6 +403,7 @@ begin
   Root.NodeType := jtObject;
   Root.ParentNode := Root;
   Root.Document := Self;
+  Encoding := 'utf-8';
   NodeIndentStr := '  ';
   Options := [joNodeAutoIndent];
   LineBreak := sLineBreak;
@@ -391,7 +411,7 @@ begin
   FDocumentElement := Root;
 end;
 
-function TJSONVerySimple.CreateNode(const Name: String; NodeType: TJSONNodeType): TJSONNode;
+function TJSONVerySimple.CreateNode(const Name: TJSONString; NodeType: TJSONNodeType): TJSONNode;
 begin
   Result := TJSONNode.Create(NodeType);
   Result.Name := Name;
@@ -411,7 +431,7 @@ begin
   Result := Root.ChildNodes;
 end;
 
-function TJSONVerySimple.GetEncoding: String;
+function TJSONVerySimple.GetEncoding: TJSONString;
 begin
   Result := FEncoding;
 end;
@@ -426,7 +446,7 @@ begin
   Result := joPreserveWhitespace in Options;
 end;
 
-function TJSONVerySimple.IsSame(const Value1, Value2: String): Boolean;
+function TJSONVerySimple.IsSame(const Value1, Value2: TJSONString): Boolean;
 begin
   if joCaseInsensitive in Options then
     Result := (CompareText(Value1, Value2) = 0)
@@ -434,7 +454,7 @@ begin
     Result := (Value1 = Value2);
 end;
 
-function TJSONVerySimple.GetText: String;
+function TJSONVerySimple.GetText: TJSONString;
 var
   Stream: TStringStream;
 begin
@@ -515,7 +535,7 @@ end;
 procedure TJSONVerySimple.Parse(Reader: TStreamReader);
 var
   Parent: TJSONNode;
-  FirstChar: String;
+  FirstChar: TJSONString;
 begin
   Clear;
   Parent := Root;
@@ -539,7 +559,7 @@ begin
   FDocumentElement := Root;
 end;
 
-procedure TJSONVerySimple.SkipWhitespace(Reader: TStreamReader; Line: String);
+procedure TJSONVerySimple.SkipWhitespace(Reader: TStreamReader; Line: TJSONString);
 var
   SingleChar: Char;
   Skip: Boolean;
@@ -564,7 +584,7 @@ end;
 
 procedure TJSONVerySimple.ParseObject(Reader: TStreamReader; var Parent: TJSONNode);
 var
-  FirstChar: String;
+  FirstChar: TJSONString;
 begin
   Reader.IncCharPos;
   FirstChar := Reader.FirstChar;
@@ -601,7 +621,7 @@ procedure TJSONVerySimple.ParsePair(Reader: TStreamReader; var Parent: TJSONNode
 var
   Node: TJSONNode;
   Quote: Char;
-  Line: String;
+  Line: TJSONString;
   nodeType: TJSONNodeType;
 begin
   Reader.IncCharPos;
@@ -652,7 +672,7 @@ procedure TJSONVerySimple.ParseValue(Reader: TStreamReader; var Parent: TJSONNod
 var
   Node: TJSONNode;
   Quote: Char;
-  Line: String;
+  Line: TJSONString;
   nodeType: TJSONNodeType;
 begin
   Quote := Reader.FirstChar;
@@ -696,7 +716,7 @@ end;
 
 procedure TJSONVerySimple.ParseArray(Reader: TStreamReader; var Parent: TJSONNode);
 var
-  FirstChar: String;
+  FirstChar: TJSONString;
   Node: TJSONNode;
 begin
   Reader.IncCharPos;
@@ -784,7 +804,7 @@ begin
     Root.ChildNodes.Add(Value);
 end;
 
-procedure TJSONVerySimple.SetEncoding(const Value: String);
+procedure TJSONVerySimple.SetEncoding(const Value: TJSONString);
 begin
   FEncoding:=Value;
 end;
@@ -805,20 +825,7 @@ begin
     Options := Options - [joPreserveWhitespace]
 end;
 
-class function TJSONVerySimple.Unescape(const Value: String): String;
-begin
-  Result := ReplaceStr(Value,  '\"', '"');
-  Result := ReplaceStr(Result, '\\', '\');
-  Result := ReplaceStr(Result, '\/', '/');
-  Result := ReplaceStr(Result, '\b', #8);
-  Result := ReplaceStr(Result, '\f', #12);
-  Result := ReplaceStr(Result, '\n', #10);
-  Result := ReplaceStr(Result, '\r', #13);
-  Result := ReplaceStr(Result, '\t', #9);
-//  Result := ReplaceStr(Result, '\u', 'u');
-end;
-
-procedure TJSONVerySimple.SetText(const Value: String);
+procedure TJSONVerySimple.SetText(const Value: TJSONString);
 var
   Stream: TStringStream;
 begin
@@ -832,11 +839,11 @@ begin
   end;
 end;
 
-procedure TJSONVerySimple.Walk(Writer: TStreamWriter; const PrefixNode: String; Node: TJSONNode);
+procedure TJSONVerySimple.Walk(Writer: TStreamWriter; const PrefixNode: TJSONString; Node: TJSONNode);
 var
   Child: TJSONNode;
-  Line: String;
-  Indent: String;
+  Line: TJSONString;
+  Indent: TJSONString;
 begin
   if (Node = Root.ChildNodes.First) or (SkipIndent) then begin
     if joCompact in Options then
@@ -863,7 +870,7 @@ begin
       Line := Line + IfThen((Node.ParentNode <> Nil) and (Node.ParentNode.NodeType <> jtArray), '"' + Escape(Node.Name) + '"' + FDivider) + '"' + Escape(Node.Value) + '"';
     end;
     jtNumber: begin
-      Line := Line + IfThen((Node.ParentNode <> Nil) and (Node.ParentNode.NodeType <> jtArray), '"' + Escape(Node.Name) + '"' + FDivider) + Node.Value;
+      Line := Line + IfThen((Node.ParentNode <> Nil) and (Node.ParentNode.NodeType <> jtArray), '"' + Escape(Node.Name) + '"' + FDivider) + Escape(Node.Value);
     end;
     jtTrue: begin
       Line := Line + IfThen((Node.ParentNode <> Nil) and (Node.ParentNode.NodeType <> jtArray), '"' + Escape(Node.Name) + '"' + FDivider) + 'true';
@@ -879,6 +886,7 @@ begin
   if Assigned(JSONEscapeProcedure) then
     JSONEscapeProcedure(Line);
 
+//  Writer.Write(WideCharToString(PWideChar(Line)));
   Writer.Write(Line);
 
   // Set indent for child nodes
@@ -923,21 +931,35 @@ begin
     Writer.Write(Indent);
 end;
 
-
-class function TJSONVerySimple.Escape(const Value: String): String;
+class function TJSONVerySimple.Escape(const Value: TJSONString): TJSONString;
 begin
-  Result := ReplaceStr(Value, '\', '\\');
-  Result := ReplaceStr(Result,  '"', '\"');
+  Result := Value;
+//  Result := ReplaceStr(Value, 'u',  '\u');
+  Result := ReplaceStr(Result, '\', '\\');
+  Result := ReplaceStr(Result, #8,  '\\\\b');
+  Result := ReplaceStr(Result, #12, '\\\\f');
+  Result := ReplaceStr(Result, #10, '\\\\n');
+  Result := ReplaceStr(Result, #13, '\\\\r');
+  Result := ReplaceStr(Result, #9,  '\\\\t');
+  Result := ReplaceStr(Result, '"', '\"');
   Result := ReplaceStr(Result, '/', '\/');
-  Result := ReplaceStr(Result, #8,  '\\b');
-  Result := ReplaceStr(Result, #12, '\\f');
-  Result := ReplaceStr(Result, #10, '\\n');
-  Result := ReplaceStr(Result, #13, '\\r');
-  Result := ReplaceStr(Result, #9,  '\\t');
-//  Result := ReplaceStr(Result, 'u', '\u');
 end;
 
-function TJSONVerySimple.ExtractText(var Line: String; const StopChars: String; Options: TJSONExtractTextOptions): String;
+class function TJSONVerySimple.Unescape(const Value: TJSONString): TJSONString;
+begin
+  Result := Value;
+  Result := ReplaceStr(Result, '\\', '\');
+  Result := ReplaceStr(Result, '\"', '"');
+  Result := ReplaceStr(Result, '\/', '/');
+  Result := ReplaceStr(Result, '\\b', #8);
+  Result := ReplaceStr(Result, '\\f', #12);
+  Result := ReplaceStr(Result, '\\n', #10);
+  Result := ReplaceStr(Result, '\\r', #13);
+  Result := ReplaceStr(Result, '\\t', #9);
+//  Result := ReplaceStr(Result, '\\u', 'u');
+end;
+
+function TJSONVerySimple.ExtractText(var Line: TJSONString; const StopChars: TJSONString; Options: TJSONExtractTextOptions): TJSONString;
 var
   CharPos, FoundPos: Integer;
   TestChar: Char;
@@ -964,7 +986,7 @@ end;
 
 { TJSONNode }
 
-function TJSONNode.AddChild(const AName: String; ANodeType: TJSONNodeType): TJSONNode;
+function TJSONNode.AddChild(const AName: TJSONString; ANodeType: TJSONNodeType): TJSONNode;
 var
   Last: TJSONNode;
 begin
@@ -988,7 +1010,9 @@ function TJSONNode.RemoveChild(const Node: TJSONNode): Integer;
 begin
   Result:=Node.Index;
   if Node.NextSibling <> Nil then
-    Node.NextSibling.FPrevSibling:=Node.PreviousSibling;
+    Node.NextSibling.FPrevSibling:=Node.PreviousSibling
+  else if Node.PreviousSibling <> Nil then // last node, so delete reference within previous node to this, which is about to be deleted
+    Node.PreviousSibling.FNextSibling:=Nil;
   ChildNodes.Remove(Result);
 end;
 
@@ -1039,14 +1063,14 @@ begin
   inherited;
 end;
 
-function TJSONNode.IsSame(const Value1, Value2: String): Boolean;
+function TJSONNode.IsSame(const Value1, Value2: TJSONString): Boolean;
 begin
   Result := ((Assigned(Document) and Document.IsSame(Value1, Value2)) or // use the documents text comparison
     ((not Assigned(Document)) and (CompareText(Value1, Value2) = 0))); // or if not Assigned then compare names case sensitive
 end;
 
 {
-function RecursiveFindNode(ANode: IJSONNode; const SearchNodeName: string): IJSONNode;
+function RecursiveFindNode(ANode: IJSONNode; const SearchNodeName: TJSONString): IJSONNode;
 var
   I: Integer;
 begin
@@ -1065,7 +1089,7 @@ begin
 end;
 }
 
-function TJSONNode.FindNodeRecursive(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNode;
+function TJSONNode.FindNodeRecursive(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []; const SearchOptions: TJSONNodeSearchTypes = []): TJSONNode;
 var
   Node: TJSONNode;
 begin
@@ -1083,7 +1107,7 @@ begin
   end;
 end;
 
-function TJSONNode.FindNodeRecursive(const Name, Value: String; NodeTypes: TJSONNodeTypes = []): TJSONNode;
+function TJSONNode.FindNodeRecursive(const Name, Value: TJSONString; NodeTypes: TJSONNodeTypes = []; const SearchOptions: TJSONNodeSearchTypes = []): TJSONNode;
 var
   Node: TJSONNode;
 begin
@@ -1103,28 +1127,40 @@ begin
 end;
 
 {
-function TJSONNode.FindNodeRecursive(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNodeList;
+function TJSONNode.FindNodeRecursive(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNodeList;
 begin
   Result := ChildNodes.FindNodes(Name, NodeTypes);
 end;
 }
 
-function TJSONNode.FindNode(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNode;
+function TJSONNode.FindNode(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []; const SearchOptions: TJSONNodeSearchTypes = []): TJSONNode;
 begin
+  if ((NodeTypes = []) or (Self.NodeType in NodeTypes)) and IsSame(Self.Name, Name) then begin
+    Result := Self;
+    Exit;
+  end;
   Result := ChildNodes.Find(Name, NodeTypes);
+  if (Result = Nil) and (jsRecursive in SearchOptions) then
+    Result:=FindNodeRecursive(Name, NodeTypes, SearchOptions);
 end;
 
-function TJSONNode.FindNode(const Name, Value: String; NodeTypes: TJSONNodeTypes = []): TJSONNode;
+function TJSONNode.FindNode(const Name, Value: TJSONString; NodeTypes: TJSONNodeTypes = []; const SearchOptions: TJSONNodeSearchTypes = []): TJSONNode;
 begin
+  if ((NodeTypes = []) or (Self.NodeType in NodeTypes)) and IsSame(Self.Name, Name) and IsSame(Self.Value, Value) then begin
+    Result := Self;
+    Exit;
+  end;
   Result := ChildNodes.Find(Name, Value, NodeTypes);
+  if (Result = Nil) and (jsRecursive in SearchOptions) then
+    Result:=FindNodeRecursive(Name, Value, NodeTypes, SearchOptions);
 end;
 
-function TJSONNode.FindNodes(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNodeList;
+function TJSONNode.FindNodes(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNodeList;
 begin
   Result := ChildNodes.FindNodes(Name, NodeTypes);
 end;
 
-procedure TJSONNode.ScanNodes(Name: String; CallBack: TJSONNodeCallBack);
+procedure TJSONNode.ScanNodes(Name: TJSONString; CallBack: TJSONNodeCallBack);
 var
   Node: TJSONNode;
 begin
@@ -1139,7 +1175,7 @@ begin
   Result := ChildNodes.First;
 end;
 
-function TJSONNode.HasChild(const Name: String; NodeTypes: TJSONNodeTypes = []): Boolean;
+function TJSONNode.HasChild(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): Boolean;
 begin
   Result := ChildNodes.HasNode(Name, NodeTypes);
 end;
@@ -1149,7 +1185,7 @@ begin
   Result := (ChildNodes.Count > 0);
 end;
 
-function TJSONNode.InsertChild(const Name: String; Position: Integer; NodeType: TJSONNodeType): TJSONNode;
+function TJSONNode.InsertChild(const Name: TJSONString; Position: Integer; NodeType: TJSONNodeType): TJSONNode;
 begin
   Result := ChildNodes.Insert(Name, Position, NodeType);
   if Assigned(Result) then
@@ -1180,24 +1216,26 @@ begin
   ChildNodes.Document := Value;
 end;
 
-function TJSONNode.GetName: String;
+function TJSONNode.GetName: TJSONString;
 begin
   Result:=TJSONVerySimple.Unescape(FName);
 end;
 
-function TJSONNode.GetValue: String;
+function TJSONNode.GetValue: TJSONString;
 begin
   Result:=TJSONVerySimple.Unescape(FValue);
 end;
 
-procedure TJSONNode.SetName(Value: String);
+procedure TJSONNode.SetName(Value: TJSONString);
 begin
-  FName:=TJSONVerySimple.Escape(Value);
+//  FName:=TJSONVerySimple.Escape(Value);
+  FName:=Value;
 end;
 
-procedure TJSONNode.SetValue(Value: String);
+procedure TJSONNode.SetValue(Value: TJSONString);
 begin
-  FValue:=TJSONVerySimple.Escape(Value);
+//  FValue:=TJSONVerySimple.Escape(Value);
+  FValue:=Value;
 end;
 
 procedure TJSONNode._SetNodeType(const Value: TJSONNodeType);
@@ -1220,16 +1258,15 @@ begin
   Result := Self;
 end;
 
-function TJSONNode.SetText(const AValue: String): TJSONNode;
+function TJSONNode.SetText(const AValue: TJSONString): TJSONNode;
 begin
   Value := AValue;
   Result := Self;
 end;
 
-
 { TJSONNodeList }
 
-function TJSONNodeList.Find(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNode;
+function TJSONNodeList.Find(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNode;
 var
   Node: TJSONNode;
 begin
@@ -1270,19 +1307,19 @@ begin
   Result.Document := Document;
 end;
 
-function TJSONNodeList.Add(const Name: String; NodeType: TJSONNodeType): TJSONNode;
+function TJSONNodeList.Add(const Name: TJSONString; NodeType: TJSONNodeType): TJSONNode;
 begin
   Result := Add(NodeType);
   Result.Name := Name;
 end;
 
-function TJSONNodeList.CountNames(const Name: String; var NodeList: TJSONNodeList): Integer;
+function TJSONNodeList.CountNames(const Name: TJSONString; var NodeList: TJSONNodeList): Integer;
 begin
   NodeList:=FindNodes(Name, []);
   Result:=NodeList.Count;
 end;
 
-function TJSONNodeList.Find(const Name, Value: String; NodeTypes: TJSONNodeTypes = []): TJSONNode;
+function TJSONNodeList.Find(const Name, Value: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNode;
 var
   Node: TJSONNode;
 begin
@@ -1295,12 +1332,12 @@ begin
     end;
 end;
 
-function TJSONNodeList.FindNode(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNode;
+function TJSONNodeList.FindNode(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNode;
 begin
   Result := Find(Name, NodeTypes);
 end;
 
-function TJSONNodeList.FindNodes(const Name: String; NodeTypes: TJSONNodeTypes = []): TJSONNodeList;
+function TJSONNodeList.FindNodes(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNodeList;
 var
   Node: TJSONNode;
 begin
@@ -1329,14 +1366,14 @@ begin
   Result := Items[Index];
 end;
 
-function TJSONNodeList.HasNode(const Name: String; NodeTypes: TJSONNodeTypes = []): Boolean;
+function TJSONNodeList.HasNode(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): Boolean;
 begin
   Result := Assigned(Find(Name, NodeTypes));
 end;
 
-function TJSONNodeList.Insert(const Name: String; Position: Integer; NodeType: TJSONNodeType): TJSONNode;
+function TJSONNodeList.Insert(const Name: TJSONString; Position: Integer; NodeType: TJSONNodeType): TJSONNode;
 var
-  Node: TJSONNode;
+  Node, NodeBefore: TJSONNode;
   Index: Integer;
 begin
   try
@@ -1354,6 +1391,17 @@ begin
   try
     Insert(Position, Result);
     Result.FIndex := Index;
+    if Position > 0 then try
+      NodeBefore:=Get(Position - 1);
+      Result.FPrevSibling := NodeBefore;
+      NodeBefore.FNextSibling := Result;
+    except
+      // discard this
+    end;
+    if Node <> Nil then begin
+      Result.FNextSibling := Node;
+      Node.FPrevSibling := Result;
+    end;
     // reindex nodes
     while Node <> Nil do begin
       Node.FIndex:=Index + 1;
@@ -1388,7 +1436,7 @@ begin
   end;
 end;
 
-function TJSONNodeList.IsSame(const Value1, Value2: String): Boolean;
+function TJSONNodeList.IsSame(const Value1, Value2: TJSONString): Boolean;
 begin
   Result := ((Assigned(Document) and Document.IsSame(Value1, Value2)) or // use the documents text comparison
             ((not Assigned(Document)) and (Value1 = Value2))); // or if not Assigned then compare names case sensitive
@@ -1402,6 +1450,27 @@ end;
 function TJSONNodeList.NextSibling(Node: TJSONNode): TJSONNode;
 begin
   Result:=Node.NextSibling;
+end;
+
+{ TStreamWriterHelper }
+
+constructor TStreamWriterHelper.Create(Stream: TStream; Encoding: TEncoding; WritePreamble: Boolean; BufferSize: Integer);
+begin
+  Create(Stream, Encoding, BufferSize);
+  if not WritePreamble then begin
+    Self.BaseStream.Position:=0;
+    Self.BaseStream.Size:=0;
+  end;
+end;
+
+constructor TStreamWriterHelper.Create(Filename: string; Append: Boolean; Encoding: TEncoding; WritePreamble: Boolean;
+  BufferSize: Integer);
+begin
+  Create(Filename, Append, Encoding, BufferSize);
+  if not WritePreamble then begin
+    Self.BaseStream.Position:=0;
+    Self.BaseStream.Size:=0;
+  end;
 end;
 
 { TStreamReaderHelper }
@@ -1420,10 +1489,10 @@ begin
     Self.FBufferedData.Remove(0, Value);
 end;
 
-function TStreamReaderHelper.IsUppercaseText(const Value: String): Boolean;
+function TStreamReaderHelper.IsUppercaseText(const Value: TJSONString): Boolean;
 var
   ValueLength: Integer;
-  Text: String;
+  Text: TJSONString;
 begin
   Result := False;
   ValueLength := Length(Value);
@@ -1450,7 +1519,7 @@ begin
   Result := (Self.FBufferedData.Length >= Value);
 end;
 
-function TStreamReaderHelper.ReadText(const StopChars: String; Options: TJSONExtractTextOptions): String;
+function TStreamReaderHelper.ReadText(const StopChars: TJSONString; Options: TJSONExtractTextOptions): TJSONString;
 var
   NewLineIndex: Integer;
   PostNewLineIndex: Integer;
