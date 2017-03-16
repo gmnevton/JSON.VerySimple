@@ -1,4 +1,4 @@
-# JSON.VerySimple v1.2.0
+# JSON.VerySimple v1.3.0
 A lightweight, one-unit, cross-platform JSON reader/writer
   for Delphi 2010+ by Grzegorz Molenda
   https://github.com/gmnevton/JSON.VerySimple
