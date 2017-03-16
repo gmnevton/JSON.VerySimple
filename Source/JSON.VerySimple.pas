@@ -1,4 +1,4 @@
-{ JSON.VerySimple v1.2.0 - a lightweight, one-unit, cross-platform JSON reader/writer
+{ JSON.VerySimple v1.3.0 - a lightweight, one-unit, cross-platform JSON reader/writer
   for Delphi 2010+ by Grzegorz Molenda
   https://github.com/gmnevton/JSON.VerySimple
 
@@ -24,7 +24,7 @@ unit JSON.VerySimple;
 interface
 
 uses
-  Classes, SysUtils, Generics.Defaults, Generics.Collections;
+  Classes, SysUtils, Generics.Defaults, Generics.Collections{, uStreamWriter};
 
 const
   TJSONSpaces = #$20 + #$0D + #$0A + #9;
@@ -35,11 +35,12 @@ type
   TJSONNode = class;
   TJSONNodeType = (jtObject, jtArray, jtString, jtNumber, jtTrue, jtFalse, jtNull);
   TJSONNodeTypes = set of TJSONNodeType;
+  TJSONRootType = (jrtObject, jrtArray);
   TJSONNodeSearchType = (jsRecursive);
   TJSONNodeSearchTypes = set of TJSONNodeSearchType;
   TJSONNodeList = class;
-  TJSONOptions = set of (joNodeAutoIndent, joCompact, joCompactWithBreakes, joPreserveWhiteSpace, joCaseInsensitive, joWriteBOM);
-  TJSONExtractTextOptions = set of (jetDeleteStopChar, jetStopString);
+  TJSONOptions = set of (joNodeAutoIndent, joCompact, joCompactWithBreakes, joPreserveWhiteSpace, joCaseInsensitive, joWriteBOM, joMultilineStrings);
+  TJSONExtractTextOptions = set of (jetDeleteToStopChar, jetDeleteWithStopChar, jetStopString);
 
   TJSONParseException = class(Exception);
 
@@ -187,7 +188,6 @@ type
     SkipIndent: Boolean;
     JSONEscapeProcedure: TJSONEscapeProcedure;
     procedure Parse(Reader: TStreamReader); virtual;
-    procedure SkipWhitespace(Reader: TStreamReader; Line: TJSONString);
     procedure ParseObject(Reader: TStreamReader; var Parent: TJSONNode);
     procedure ParsePair(Reader: TStreamReader; var Parent: TJSONNode);
     procedure ParseValue(Reader: TStreamReader; var Parent: TJSONNode);
@@ -201,10 +201,12 @@ type
     function  GetChildNodes: TJSONNodeList; virtual;
     function  ExtractText(var Line: TJSONString; const StopChars: TJSONString; Options: TJSONExtractTextOptions): TJSONString; virtual;
     procedure SetDocumentElement(Value: TJSONNode); virtual;
-    procedure SetNodeAutoIndent(Value: Boolean);
+    procedure SetNodeAutoIndent(const Value: Boolean);
     function  GetNodeAutoIndent: Boolean;
-    procedure SetPreserveWhitespace(Value: Boolean);
+    procedure SetPreserveWhitespace(const Value: Boolean);
     function  GetPreserveWhitespace: Boolean;
+    procedure SetMultilineStrings(const Value: Boolean);
+    function  GetMultilineStrings: Boolean;
     function  IsSame(const Value1, Value2: TJSONString): Boolean;
   public
     ///	<summary> Indent used for the JSON output </summary>
@@ -214,7 +216,7 @@ type
     ///	<summary> Options for JSON output like indentation type </summary>
     Options: TJSONOptions;
     ///	<summary> Creates a new JSON document parser </summary>
-    constructor Create; virtual;
+    constructor Create(const RootType: TJSONRootType = jrtObject); virtual;
     ///	<summary> Destroys the JSON document parser </summary>
     destructor Destroy; override;
     ///	<summary> Deletes all nodes </summary>
@@ -250,6 +252,8 @@ type
     property NodeAutoIndent: Boolean read GetNodeAutoIndent write SetNodeAutoIndent;
     ///	<summary> Set to True if all spaces and linebreaks should be included as a text node, same as doPreserve option </summary>
     property PreserveWhitespace: Boolean read GetPreserveWhitespace write SetPreserveWhitespace;
+    ///	<summary> Set to True if all spaces and linebreaks should be included as a text node, same as doPreserve option </summary>
+    property MultilineStrings: Boolean read GetMultilineStrings write SetMultilineStrings;
     ///	<summary> The JSON as a string representation </summary>
     property Text: TJSONString read GetText write SetText;
     ///	<summary> The JSON as a string representation, same as .Text </summary>
@@ -275,14 +279,16 @@ type
   public
     ///	<summary> Assures the read buffer holds at least Value characters </summary>
     function PrepareBuffer(Value: Integer): Boolean;
-    ///	<summary> Extract text until chars found in StopChars </summary>
-    function ReadText(const StopChars: TJSONString; Options: TJSONExtractTextOptions): TJSONString; virtual;
+    ///
+    procedure SkipWhitespace;
     ///	<summary> Returns fist char but does not removes it from the buffer </summary>
     function FirstChar: Char;
     ///	<summary> Proceed with the next character(s) (value optional, default 1) </summary>
     procedure IncCharPos(Value: Integer = 1); virtual;
     ///	<summary> Returns True if the first uppercased characters at the current position match Value </summary>
     function IsUppercaseText(const Value: TJSONString): Boolean; virtual;
+    ///	<summary> Extract text until chars found in StopChars </summary>
+    function ReadText(const StopChars: TJSONString; Options: TJSONExtractTextOptions; const MultilineString: Boolean): TJSONString; virtual;
   end;
 
 const
@@ -316,6 +322,12 @@ begin
   Result := TEncoding.Default;
 end;
 {$IFEND}
+
+resourcestring
+  sRootTypeNotDefined    = 'Root type not defined!';
+  sExpectedButFound      = 'Expected %s, but %s found at ''%s''.';
+  sExpectedButNotFound   = 'Expected %s, but nothing found!';
+  sExpectedNumberAsValue = 'Expected True/False/Null or Number as %svalue, but found ''%s'' !';
 
 function IfThen(AValue: Boolean; const ATrue: TJSONString; AFalse: TJSONString = ''): TJSONString; overload; inline;
 begin
@@ -393,14 +405,18 @@ begin
   FDocumentElement := Root;
 end;
 
-constructor TJSONVerySimple.Create;
+constructor TJSONVerySimple.Create(const RootType: TJSONRootType = jrtObject);
 begin
-  inherited;
+  inherited Create;
   Root := TJSONNode.Create(jtObject);
   Root.Name:='';
   Root.FLevel := 0;
 //  Root.FIndex := 0;
-  Root.NodeType := jtObject;
+  Root.NodeType := jtNull;
+  if RootType = jrtObject then
+    Root.NodeType := jtObject
+  else if RootType = jrtArray then
+    Root.NodeType := jtArray;
   Root.ParentNode := Root;
   Root.Document := Self;
   Encoding := 'utf-8';
@@ -446,6 +462,11 @@ begin
   Result := joPreserveWhitespace in Options;
 end;
 
+function TJSONVerySimple.GetMultilineStrings: Boolean;
+begin
+  Result := joMultilineStrings in Options;
+end;
+
 function TJSONVerySimple.IsSame(const Value1, Value2: TJSONString): Boolean;
 begin
   if joCaseInsensitive in Options then
@@ -484,7 +505,12 @@ begin
     Writer.NewLine := LineBreak;
 
   SkipIndent := False;
-  Writer.Write('{');
+  if Root.NodeType = jtObject then
+    Writer.Write('{')
+  else if Root.NodeType = jtArray then
+    Writer.Write('[')
+  else
+    raise TJSONParseException.Create(sRootTypeNotDefined);
   if not (joCompact in Options) then
     Writer.Write(LineBreak);
 
@@ -496,7 +522,10 @@ begin
 
   if not (joCompact in Options) then
     Writer.Write(LineBreak);
-  Writer.Write('}');
+  if Root.NodeType = jtObject then
+    Writer.Write('}')
+  else if Root.NodeType = jtArray then
+    Writer.Write(']');
 end;
 
 function TJSONVerySimple.LoadFromFile(const FileName: String; BufferSize: Integer = 4096): TJSONVerySimple;
@@ -543,52 +572,34 @@ begin
   while not Reader.EndOfStream do begin
     FirstChar := Reader.FirstChar;
     if FirstChar = '{' then begin // Parse object
+      if (Parent = Root) and (Root.NodeType <> jtObject) then
+        Root.NodeType:=jtObject;
       ParseObject(Reader, Parent);
     end
     else if FirstChar = '[' then begin // Parse array
+      if (Parent = Root) and (Root.NodeType <> jtArray) then
+        Root.NodeType:=jtArray;
       ParseArray(Reader, Parent);
     end
     else if FirstChar = ',' then begin // Next element
       Reader.IncCharPos;
     end
     else if FirstChar <> '' then begin // omit whitespace
-      SkipWhitespace(Reader, FirstChar);
+      Reader.SkipWhitespace;
     end;
   end;
 
   FDocumentElement := Root;
 end;
 
-procedure TJSONVerySimple.SkipWhitespace(Reader: TStreamReader; Line: TJSONString);
-var
-  SingleChar: Char;
-  Skip: Boolean;
-begin
-  while True do begin
-    Skip:=True;
-    for SingleChar in Line do
-      if AnsiStrScan(TJSONSpaces, SingleChar) = Nil then begin
-        Skip:=False;
-        Break;
-      end;
-    if Skip then begin
-      Reader.IncCharPos;
-      if Reader.EndOfStream then  // if no chars available then exit
-        Break;
-      Line:=Reader.FirstChar;
-    end
-    else
-      Break;
-  end;
-end;
-
 procedure TJSONVerySimple.ParseObject(Reader: TStreamReader; var Parent: TJSONNode);
 var
   FirstChar: TJSONString;
+  Opened: Boolean;
 begin
+  Opened:=True;
   Reader.IncCharPos;
-  FirstChar := Reader.FirstChar;
-  SkipWhitespace(Reader, FirstChar);
+  Reader.SkipWhitespace;
   while True do begin
     FirstChar := Reader.FirstChar;
     if FirstChar = '"' then begin // Parse pair
@@ -596,25 +607,34 @@ begin
     end
     else if FirstChar = ',' then begin // Next element
       Reader.IncCharPos;
-      FirstChar := Reader.FirstChar;
-      SkipWhitespace(Reader, FirstChar);
+      Reader.SkipWhitespace;
     end
     else if FirstChar <> '' then begin // omit whitespace
       if FirstChar = '}' then begin // exit from object
+        Opened:=False;
         Reader.IncCharPos;
-        FirstChar := Reader.FirstChar;
-        SkipWhitespace(Reader, FirstChar);
+        Reader.SkipWhitespace;
         Parent:=Parent.ParentNode;
         Break;
+      end
+      else if FirstChar <> '"' then
+        raise TJSONParseException.CreateFmt(sExpectedButFound, ['pair', '''' + FirstChar + '''', Reader.ReadToEnd])
+      else begin
+        Reader.IncCharPos;
+        Reader.SkipWhitespace;
       end;
-      SkipWhitespace(Reader, FirstChar);
     end
     else
-      raise TJSONParseException.Create('Expected char, but nothing found!');
+      raise TJSONParseException.CreateFmt(sExpectedButNotFound, ['pair']);
 
     if Reader.EndOfStream then
       Break;
   end;
+  FirstChar := Reader.FirstChar;
+  if (FirstChar <> ',') and ((FirstChar <> '}') and (FirstChar <> ']')) and not Reader.EndOfStream then
+    raise TJSONParseException.CreateFmt(sExpectedButFound, [''',''', '''' + FirstChar + '''', Reader.ReadToEnd]);
+  if (FirstChar = #0) and Reader.EndOfStream and Opened then
+    raise TJSONParseException.CreateFmt(sExpectedButFound, ['''}''', 'end of stream', Reader.ReadToEnd]);
 end;
 
 procedure TJSONVerySimple.ParsePair(Reader: TStreamReader; var Parent: TJSONNode);
@@ -625,18 +645,18 @@ var
   nodeType: TJSONNodeType;
 begin
   Reader.IncCharPos;
-  Quote := Reader.FirstChar;
-  SkipWhitespace(Reader, Quote);
-  Line:=Reader.ReadText('"', [jetDeleteStopChar, jetStopString]);
+//  Reader.SkipWhitespace;
+  Line:=Reader.ReadText('"', [jetDeleteWithStopChar, jetStopString], joMultilineStrings in Options);
   Node := Parent.AddChild(Line, jtString);
 
-  Line:=Reader.ReadText(':', [jetStopString]);
-  SkipWhitespace(Reader, Line);
+  Line:=Reader.ReadText(':', [jetDeleteWithStopChar, jetStopString], False);
+  Reader.SkipWhitespace;
   Quote := Reader.FirstChar;
   if Quote = '"' then begin // set value
     Reader.IncCharPos;
-    Line:=Reader.ReadText(Quote, [jetDeleteStopChar, jetStopString]);
+    Line:=Reader.ReadText(Quote, [jetDeleteWithStopChar, jetStopString], joMultilineStrings in Options);
     Node.Value:=Unescape(Line);
+    Reader.SkipWhitespace;
   end
   else if Quote = '{' then begin // new object
     Node.NodeType:=jtObject;
@@ -649,7 +669,6 @@ begin
     ParseArray(Reader, Parent);
   end
   else if Quote <> '' then begin // set number / string / true / false / null
-    Reader.IncCharPos;
     nodeType:=jtNumber;
     if not CharInSet(Quote, ['-', '0'..'9']) then begin
       nodeType:=jtString;
@@ -660,11 +679,13 @@ begin
       else if CharInSet(Quote, ['n', 'N']) then
         nodeType:=jtNull;
     end;
+    if nodeType = jtString then
+      raise TJSONParseException.CreateFmt(sExpectedNumberAsValue, ['pair ', Reader.ReadToEnd]);
     Node.NodeType:=nodeType;
-    Line:=Reader.ReadText(',]}'+TJSONSpaces, []);
+    Reader.IncCharPos;
+    Line:=Reader.ReadText(',]}'+TJSONSpaces, [jetDeleteToStopChar], False);
     Node.Value:=Unescape(Quote + Line);
-    Quote := Reader.FirstChar;
-    SkipWhitespace(Reader, Quote);
+    Reader.SkipWhitespace;
   end;
 end;
 
@@ -679,10 +700,9 @@ begin
   if Quote = '"' then begin // set string value
     Reader.IncCharPos;
     Node := Parent.AddChild('', jtString);
-    Line:=Reader.ReadText(Quote, [jetDeleteStopChar, jetStopString]);
+    Line:=Reader.ReadText(Quote, [jetDeleteWithStopChar, jetStopString], joMultilineStrings in Options);
     Node.Value:=Unescape(Line);
-    Quote := Reader.FirstChar;
-    SkipWhitespace(Reader, Quote);
+    Reader.SkipWhitespace;
   end
   else if Quote = '{' then begin // set object value
     Node := Parent.AddChild('', jtObject);
@@ -695,7 +715,6 @@ begin
     ParseArray(Reader, Parent);
   end
   else if Quote <> '' then begin // set number / string / true / false / null
-    Reader.IncCharPos;
     nodeType:=jtNumber;
     if not CharInSet(Quote, ['-', '0'..'9']) then begin
       nodeType:=jtString;
@@ -706,11 +725,13 @@ begin
       else if CharInSet(Quote, ['n', 'N']) then
         nodeType:=jtNull;
     end;
+    if nodeType = jtString then
+      raise TJSONParseException.CreateFmt(sExpectedNumberAsValue, ['', Reader.ReadToEnd]);
     Node := Parent.AddChild('', nodeType);
-    Line:=Reader.ReadText(',]}'+TJSONSpaces, []);
+    Reader.IncCharPos;
+    Line:=Reader.ReadText(',]}'+TJSONSpaces, [jetDeleteToStopChar], False);
     Node.Value:=Unescape(Quote + Line);
-    Quote := Reader.FirstChar;
-    SkipWhitespace(Reader, Quote);
+    Reader.SkipWhitespace;
   end;
 end;
 
@@ -718,10 +739,11 @@ procedure TJSONVerySimple.ParseArray(Reader: TStreamReader; var Parent: TJSONNod
 var
   FirstChar: TJSONString;
   Node: TJSONNode;
+  Opened: Boolean;
 begin
+  Opened:=True;
   Reader.IncCharPos;
-  FirstChar := Reader.FirstChar;
-  SkipWhitespace(Reader, FirstChar);
+  Reader.SkipWhitespace;
   while True do begin
     FirstChar := Reader.FirstChar;
     if FirstChar = '{' then begin // Parse object
@@ -736,12 +758,13 @@ begin
     end
     else if FirstChar = ',' then begin // Next element
       Reader.IncCharPos;
-      FirstChar := Reader.FirstChar;
-      SkipWhitespace(Reader, FirstChar);
+      Reader.SkipWhitespace;
     end
     else if FirstChar <> '' then begin // set value
       if FirstChar = ']' then begin // exit from array
+        Opened:=False;
         Reader.IncCharPos;
+        Reader.SkipWhitespace;
         Parent:=Parent.ParentNode;
         Break;
       end;
@@ -749,11 +772,16 @@ begin
       ParseValue(Reader, Parent);
     end
     else
-      raise TJSONParseException.Create('Expected char, but nothing found!');
+      raise TJSONParseException.CreateFmt(sExpectedButNotFound, ['value']);
 
     if Reader.EndOfStream then
       Break;
   end;
+  FirstChar := Reader.FirstChar;
+  if (FirstChar <> ',') and ((FirstChar <> '}') and (FirstChar <> ']')) and not Reader.EndOfStream then
+    raise TJSONParseException.CreateFmt(sExpectedButFound, [''',''', '''' + FirstChar + '''', Reader.ReadToEnd]);
+  if (FirstChar = #0) and Reader.EndOfStream and Opened then
+    raise TJSONParseException.CreateFmt(sExpectedButFound, [''']''', 'end of stream', Reader.ReadToEnd]);
 end;
 
 function TJSONVerySimple.SaveToFile(const FileName: String): TJSONVerySimple;
@@ -809,20 +837,28 @@ begin
   FEncoding:=Value;
 end;
 
-procedure TJSONVerySimple.SetNodeAutoIndent(Value: Boolean);
+procedure TJSONVerySimple.SetNodeAutoIndent(const Value: Boolean);
 begin
   if Value then
     Options := Options + [joNodeAutoIndent]
   else
-    Options := Options - [joNodeAutoIndent]
+    Options := Options - [joNodeAutoIndent];
 end;
 
-procedure TJSONVerySimple.SetPreserveWhitespace(Value: Boolean);
+procedure TJSONVerySimple.SetPreserveWhitespace(const Value: Boolean);
 begin
   if Value then
     Options := Options + [joPreserveWhitespace]
   else
-    Options := Options - [joPreserveWhitespace]
+    Options := Options - [joPreserveWhitespace];
+end;
+
+procedure TJSONVerySimple.SetMultilineStrings(const Value: Boolean);
+begin
+  if Value then
+    Options := Options + [joMultilineStrings]
+  else
+    Options := Options - [joMultilineStrings];
 end;
 
 procedure TJSONVerySimple.SetText(const Value: TJSONString);
@@ -974,7 +1010,7 @@ begin
   if FoundPos <> 0 then begin
     Dec(FoundPos);
     Result := Copy(Line, 1, FoundPos);
-    if jetDeleteStopChar in Options then
+    if jetDeleteWithStopChar in Options then
       Inc(FoundPos);
     Delete(Line, 1, FoundPos);
   end
@@ -1475,6 +1511,35 @@ end;
 
 { TStreamReaderHelper }
 
+function TStreamReaderHelper.PrepareBuffer(Value: Integer): Boolean;
+begin
+  Result := False;
+
+  if Self.FBufferedData = NIL then
+    Exit;
+
+  if (Self.FBufferedData.Length < Value) and not Self.FNoDataInStream then
+    Self.FillBuffer(Self.FEncoding);
+
+  Result := (Self.FBufferedData.Length >= Value);
+end;
+
+//procedure TJSONVerySimple.SkipWhitespace(Reader: TStreamReader; Line: TJSONString);
+procedure TStreamReaderHelper.SkipWhitespace;
+var
+  SingleChar: Char;
+begin
+  while True do begin
+    SingleChar:=Self.FirstChar;
+    if (SingleChar <> #0) and (AnsiStrScan(TJSONSpaces, SingleChar) = Nil) then
+      Break;
+
+    Self.IncCharPos;
+    if Self.EndOfStream then  // if no chars available then exit
+      Break;
+  end;
+end;
+
 function TStreamReaderHelper.FirstChar: Char;
 begin
   if PrepareBuffer(1) then
@@ -1498,33 +1563,21 @@ begin
   ValueLength := Length(Value);
 
   if PrepareBuffer(ValueLength) then begin
-    Text := Self.FBufferedData.ToString(0, ValueLength);
-    if Text = Value then begin
+    Text := UpperCase(Self.FBufferedData.ToString(0, ValueLength));
+    if Text = UpperCase(Value) then begin
       Self.FBufferedData.Remove(0, ValueLength);
       Result := True;
     end;
+    Text:='';
   end;
 end;
 
-function TStreamReaderHelper.PrepareBuffer(Value: Integer): Boolean;
-begin
-  Result := False;
-
-  if Self.FBufferedData = NIL then
-    Exit;
-
-  if (Self.FBufferedData.Length < Value) and (not Self.FNoDataInStream) then
-    Self.FillBuffer(Self.FEncoding);
-
-  Result := (Self.FBufferedData.Length >= Value);
-end;
-
-function TStreamReaderHelper.ReadText(const StopChars: TJSONString; Options: TJSONExtractTextOptions): TJSONString;
+function TStreamReaderHelper.ReadText(const StopChars: TJSONString; Options: TJSONExtractTextOptions; const MultilineString: Boolean): TJSONString;
 var
   NewLineIndex: Integer;
   PostNewLineIndex: Integer;
   StopChar: Char;
-  Found: Boolean;
+  Found, StopCharFound, NewLineFound: Boolean;
   TempIndex: Integer;
   StopCharLength: Integer;
 begin
@@ -1532,16 +1585,15 @@ begin
   if Self.FBufferedData = NIL then
     Exit;
   NewLineIndex := 0;
+  NewLineFound := False;
   PostNewLineIndex := 0;
   StopCharLength := Length(StopChars);
+  StopCharFound := False;
 
   while True do begin
     // if we're searching for a string then assure the buffer is wide enough
-    if (jetStopString in Options) and (NewLineIndex + StopCharLength > Self.FBufferedData.Length) and
-       (not Self.FNoDataInStream) then
+    if (jetStopString in Options) and (NewLineIndex + StopCharLength > Self.FBufferedData.Length) and not Self.FNoDataInStream then
       Self.FillBuffer(Self.FEncoding);
-    if True then
-
 
     if NewLineIndex >= Self.FBufferedData.Length then begin
       if Self.FNoDataInStream then begin
@@ -1561,6 +1613,12 @@ begin
       if NewLineIndex + StopCharLength - 1 < Self.FBufferedData.Length then begin
         Found := True;
         TempIndex := NewLineIndex;
+
+        if not MultilineString and (StopCharLength = 1) and ((Self.FBufferedData[TempIndex] = #10) or (Self.FBufferedData[TempIndex] = #13)) and not NewLineFound then begin
+          NewLineFound:=True;
+          Break;
+        end;
+
         for StopChar in StopChars do
           if Self.FBufferedData[TempIndex] <> StopChar then begin
             Found := False;
@@ -1580,31 +1638,43 @@ begin
           end;
 
         if Found then begin
-          if jetDeleteStopChar in Options then
+          StopCharFound := True;
+          if jetDeleteWithStopChar in Options then
             PostNewLineIndex := NewLineIndex + StopCharLength
           else
             PostNewLineIndex := NewLineIndex;
           Break;
         end;
-      end;
+      end
+      else
+        Break;
     end
     else begin
       Found := False;
       for StopChar in StopChars do
         if Self.FBufferedData[NewLineIndex] = StopChar then begin
-          if jetDeleteStopChar in Options then
-            PostNewLineIndex := NewLineIndex + 1
-          else
+          if jetDeleteToStopChar in Options then
             PostNewLineIndex := NewLineIndex;
+          if jetDeleteWithStopChar in Options then
+            PostNewLineIndex := NewLineIndex + 1;
+//          else
+//            PostNewLineIndex := NewLineIndex;
           Found := True;
           Break;
         end;
-      if Found then
+      if Found then begin
+        StopCharFound := True;
         Break;
+      end;
     end;
 
     Inc(NewLineIndex);
   end;
+
+  if not StopCharFound and NewLineFound then
+    raise TJSONParseException.CreateFmt(sExpectedButFound, [StopChars, 'new line', Self.FBufferedData.ToString(0, NewLineIndex)]);
+  if not StopCharFound and not NewLineFound then
+    raise TJSONParseException.CreateFmt(sExpectedButFound, [StopChars, 'not', Self.FBufferedData.ToString]);
 
   if NewLineIndex > 0 then
     Result := Self.FBufferedData.ToString(0, NewLineIndex);
