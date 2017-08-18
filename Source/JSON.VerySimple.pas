@@ -1,4 +1,4 @@
-{ JSON.VerySimple v1.4.0 - a lightweight, one-unit, cross-platform JSON reader/writer
+{ JSON.VerySimple v1.4.1 - a lightweight, one-unit, cross-platform JSON reader/writer
   for Delphi 2010-XE10.2 by Grzegorz Molenda
   https://github.com/gmnevton/JSON.VerySimple
 
@@ -696,7 +696,8 @@ begin
   if Quote = '"' then begin // set value
     Reader.IncCharPos;
     Line:=Reader.ReadText(Quote, [jetDeleteWithStopChar, jetStopString], joMultilineStrings in Options);
-    Node.Value:=Unescape(Line);
+//    Node.Value:=Unescape(Line);
+    Node.Value:=Line;
     Reader.SkipWhitespace;
   end
   else if Quote = '{' then begin // new object
@@ -725,7 +726,8 @@ begin
     Node.NodeType:=nodeType;
     Reader.IncCharPos;
     Line:=Reader.ReadText(',]}'+TJSONSpaces, [jetDeleteToStopChar], False);
-    Node.Value:=Unescape(Quote + Line);
+//    Node.Value:=Unescape(Quote + Line);
+    Node.Value:=Quote + Line;
     Reader.SkipWhitespace;
   end;
 end;
@@ -742,7 +744,8 @@ begin
     Reader.IncCharPos;
     Node := Parent.AddChild('', jtString);
     Line:=Reader.ReadText(Quote, [jetDeleteWithStopChar, jetStopString], joMultilineStrings in Options);
-    Node.Value:=Unescape(Line);
+//    Node.Value:=Unescape(Line);
+    Node.Value:=Line;
     Reader.SkipWhitespace;
   end
   else if Quote = '{' then begin // set object value
@@ -771,7 +774,8 @@ begin
     Node := Parent.AddChild('', nodeType);
     Reader.IncCharPos;
     Line:=Reader.ReadText(',]}'+TJSONSpaces, [jetDeleteToStopChar], False);
-    Node.Value:=Unescape(Quote + Line);
+//    Node.Value:=Unescape(Quote + Line);
+    Node.Value:=Quote + Line;
     Reader.SkipWhitespace;
   end;
 end;
@@ -1009,18 +1013,6 @@ begin
 end;
 
 class function TJSONVerySimple.Escape(const Value: TJSONString): TJSONString;
-//begin
-//  Result := Value;
-////  Result := ReplaceStr(Value, 'u',  '\u');
-//  Result := ReplaceStr(Result, '\', '\\');
-//  Result := ReplaceStr(Result, #8,  '\\\\b');
-//  Result := ReplaceStr(Result, #12, '\\\\f');
-//  Result := ReplaceStr(Result, #10, '\\\\n');
-//  Result := ReplaceStr(Result, #13, '\\\\r');
-//  Result := ReplaceStr(Result, #9,  '\\\\t');
-//  Result := ReplaceStr(Result, '"', '\"');
-//  Result := ReplaceStr(Result, '/', '\/');
-//end;
 var
   sLen, sIndex: Integer;
 begin
@@ -1082,18 +1074,6 @@ begin
 end;
 
 class function TJSONVerySimple.Unescape(const Value: TJSONString): TJSONString;
-//begin
-//  Result := Value;
-//  Result := ReplaceStr(Result, '\\', '\');
-//  Result := ReplaceStr(Result, '\"', '"');
-//  Result := ReplaceStr(Result, '\/', '/');
-//  Result := ReplaceStr(Result, '\\b', #8);
-//  Result := ReplaceStr(Result, '\\f', #12);
-//  Result := ReplaceStr(Result, '\\n', #10);
-//  Result := ReplaceStr(Result, '\\r', #13);
-//  Result := ReplaceStr(Result, '\\t', #9);
-////  Result := ReplaceStr(Result, '\\u', 'u');
-//end;
 var
   sLen, sIndex, iRes: Integer;
   sTemp: TJSONString;
@@ -1144,11 +1124,11 @@ begin
               Dec(sLen, 1);
             end;
             'u': begin
-              Delete(Result, sIndex, 2);
+              Delete(Result, sIndex + 1, 1);
               Dec(sLen, 1);
-              sTemp:=Copy(Result, sIndex, 4);
+              sTemp:=Copy(Result, sIndex + 1, 4);
               try
-                Delete(Result, sIndex, 4);
+                Delete(Result, sIndex + 1, 4);
                 Dec(sLen, 4);
                 try
                   if not TryStrToInt('$' + sTemp, iRes) then
@@ -1429,24 +1409,24 @@ end;
 
 function TJSONNode.GetName: TJSONString;
 begin
-  Result:=TJSONVerySimple.Unescape(FName);
+//  Result:=TJSONVerySimple.Escape(FName);
+  Result:=FName;
 end;
 
 function TJSONNode.GetValue: TJSONString;
 begin
-  Result:=TJSONVerySimple.Unescape(FValue);
+//  Result:=TJSONVerySimple.Escape(FValue);
+  Result:=FValue;
 end;
 
 procedure TJSONNode.SetName(Value: TJSONString);
 begin
-//  FName:=TJSONVerySimple.Escape(Value);
-  FName:=Value;
+  FName:=TJSONVerySimple.Unescape(Value);
 end;
 
 procedure TJSONNode.SetValue(Value: TJSONString);
 begin
-//  FValue:=TJSONVerySimple.Escape(Value);
-  FValue:=Value;
+  FValue:=TJSONVerySimple.Unescape(Value);
 end;
 
 procedure TJSONNode._SetNodeType(const Value: TJSONNodeType);
