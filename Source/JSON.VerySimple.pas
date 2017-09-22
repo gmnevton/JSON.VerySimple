@@ -1,4 +1,4 @@
-{ JSON.VerySimple v1.4.1 - a lightweight, one-unit, cross-platform JSON reader/writer
+{ JSON.VerySimple v1.4.2 - a lightweight, one-unit, cross-platform JSON reader/writer
   for Delphi 2010-XE10.2 by Grzegorz Molenda
   https://github.com/gmnevton/JSON.VerySimple
 
@@ -44,7 +44,7 @@ type
 
   EJSONParseException = class(Exception);
 
-  TJSONNodeCallBack = reference to procedure(Node: TJSONNode);
+  TJSONNodeCallBack = reference to function(Node: TJSONNode): Boolean; // now Result = False can break the loop
 
 {$IF CompilerVersion >= 24}
   TStreamReaderFillBuffer = procedure(var Encoding: TEncoding) of object;
@@ -116,7 +116,7 @@ type
     function FindNode(const Name, Value: TJSONString; NodeTypes: TJSONNodeTypes = []; const SearchOptions: TJSONNodeSearchTypes = []): TJSONNode; overload; virtual;
     ///	<summary> Return a list of child nodes with the given name and (optional) node types </summary>
     function FindNodes(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): TJSONNodeList; virtual;
-    // Loops trough childnodes with given Name
+    /// <summary> Loops trough childnodes with given Name or if Name is empty loops trough all childnodes, can break loop if CallBack function Result is False</summary>
     procedure ScanNodes(Name: TJSONString; CallBack: TJSONNodeCallBack);
     ///	<summary> Returns True if a child node with that name exits </summary>
     function HasChild(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): Boolean; virtual;
@@ -1357,8 +1357,10 @@ var
 begin
   Name := lowercase(Name);
   for Node in ChildNodes do
-    if (Name = '') or ((Name <> '') and (CompareText(Node.Name, Name) = 0)) then
-      CallBack(Node);
+    if (Name = '') or ((Name <> '') and (CompareText(Node.Name, Name) = 0)) then begin
+      if not CallBack(Node) then // break the loop if Result is False
+        Break;
+    end;
 end;
 
 function TJSONNode.FirstChild: TJSONNode;
