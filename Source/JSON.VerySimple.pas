@@ -1,4 +1,4 @@
-{ JSON.VerySimple v1.4.2 - a lightweight, one-unit, cross-platform JSON reader/writer
+{ JSON.VerySimple v1.4.3 - a lightweight, one-unit, cross-platform JSON reader/writer
   for Delphi 2010-XE10.2 by Grzegorz Molenda
   https://github.com/gmnevton/JSON.VerySimple
 
@@ -1337,7 +1337,9 @@ end;
 
 function TJSONNode.FindNode(const Name, Value: TJSONString; NodeTypes: TJSONNodeTypes = []; const SearchOptions: TJSONNodeSearchTypes = []): TJSONNode;
 begin
-  if ((NodeTypes = []) or (Self.NodeType in NodeTypes)) and IsSame(Self.Name, Name) and IsSame(Self.Value, Value) then begin
+  if ((NodeTypes = []) or (Self.NodeType in NodeTypes)) and 
+     ((Name = '') or ((Name <> '') and IsSame(Self.Name, Name))) and 
+     IsSame(Self.Value, Value) then begin
     Result := Self;
     Exit;
   end;
@@ -1465,7 +1467,7 @@ var
 begin
   Result := NIL;
   for Node in Self do
-    if ((NodeTypes = []) or (Node.NodeType in NodeTypes)) and (IsSame(Node.Name, Name)) then begin
+    if ((NodeTypes = []) or (Node.NodeType in NodeTypes)) and IsSame(Node.Name, Name) then begin
       Result := Node;
       Break;
     end;
@@ -1519,7 +1521,8 @@ begin
   Result := NIL;
   for Node in Self do
     if ((NodeTypes = []) or (Node.NodeType in NodeTypes)) and // if no type specified or node type in types
-       IsSame(Node.Name, Name) and IsSame(Node.Value, Value) then begin
+       ((Name = '') or ((Name <> '') and IsSame(Node.Name, Name))) and 
+       IsSame(Node.Value, Value) then begin
       Result := Node;
       Break;
     end;
