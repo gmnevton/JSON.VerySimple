@@ -1,8 +1,8 @@
-{ JSON.VerySimple v1.4.3 - a lightweight, one-unit, cross-platform JSON reader/writer
-  for Delphi 2010-XE10.2 by Grzegorz Molenda
+{ JSON.VerySimple v1.4.4 - a lightweight, one-unit, cross-platform JSON reader/writer
+  for Delphi 2010-XE10.3 by Grzegorz Molenda
   https://github.com/gmnevton/JSON.VerySimple
 
-  (c) Copyrights 2016-2017 Grzegorz Molenda aka NevTon <gmnevton@gmail.com>
+  (c) Copyrights 2016-2019 Grzegorz Molenda aka NevTon <gmnevton@gmail.com>
   This unit is free and can be used for any needs. The introduction of
   any changes and the use of those changed library is permitted without
   limitations. Only requirement:
@@ -42,7 +42,8 @@ type
   TJSONOptions = set of (joNodeAutoIndent, joCompact, joCompactWithBreakes, joPreserveWhiteSpace, joCaseInsensitive, joWriteBOM, joMultilineStrings);
   TJSONExtractTextOptions = set of (jetDeleteToStopChar, jetDeleteWithStopChar, jetStopString);
 
-  EJSONParseException = class(Exception);
+  EJSONException = class(Exception);
+  EJSONParseException = class(EJSONException);
 
   TJSONNodeCallBack = reference to function(Node: TJSONNode): Boolean; // now Result = False can break the loop
 
@@ -154,7 +155,7 @@ type
     property NodeName: TJSONString read GetName write SetName;
     ///	<summary> The node type, see TJSONNodeType </summary>
     property NodeType: TJSONNodeType read FNodeType write _SetNodeType;
-    ///	<summary> The node text, same as property Text </summary>
+    ///	<summary> Text value of the node, same as property Value </summary>
     property NodeValue: TJSONString read GetValue write SetValue;
     ///	<summary> The node Level in tree </summary>
     property Level: Cardinal read FLevel;
@@ -199,7 +200,9 @@ type
     ///	<summary> Returns next sibling node </summary>
     function NextSibling(Node: TJSONNode): TJSONNode; virtual;
     ///	<summary> Returns the node at the given position </summary>
-    function Get(Index: Integer): TJSONNode; virtual;
+    function Get(Index: Integer): TJSONNode; overload; virtual;
+    ///	<summary> Returns the node of the given Name or exception if none was found </summary>
+    function Get(Name: TJSONString): TJSONNode; overload; virtual;
     ///	<summary> Returns the node count of the given name</summary>
     function CountNames(const Name: TJSONString; var NodeList: TJSONNodeList): Integer; virtual;
   end;
@@ -369,6 +372,7 @@ resourcestring
   sExpectedButFound      = 'Expected %s, but %s found at ''%s''.';
   sExpectedButNotFound   = 'Expected %s, but nothing found!';
   sExpectedNumberAsValue = 'Expected True/False/Null or Number as %svalue, but found ''%s'' !';
+  sNodeNotFound          = 'Node ''%s'' not found!';
 
 function IfThen(AValue: Boolean; const ATrue: TJSONString; AFalse: TJSONString = ''): TJSONString; overload; inline;
 begin
@@ -1560,6 +1564,13 @@ end;
 function TJSONNodeList.Get(Index: Integer): TJSONNode;
 begin
   Result := Items[Index];
+end;
+
+function TJSONNodeList.Get(Name: TJSONString): TJSONNode;
+begin
+  Result := Find(Name);
+  if Result = Nil then
+    raise EJSONException.CreateFmt(sNodeNotFound, [Name]);
 end;
 
 function TJSONNodeList.HasNode(const Name: TJSONString; NodeTypes: TJSONNodeTypes = []): Boolean;
